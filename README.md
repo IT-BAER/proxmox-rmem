@@ -1,10 +1,25 @@
 # proxmox-rmem
 
-**Fix phantom memory usage in Proxmox VE for Linux and BSD VMs.**
+**Fix inflated memory usage in Proxmox VE 9 for Linux and BSD VMs.**
 
-Proxmox 9 reports inflated memory usage because it counts OS file cache as "used." This tool overrides that with *actual* active memory fetched directly from guest VMs.
+## The Problem
 
-## How It Works
+After upgrading to Proxmox VE 9, VM memory usage may appear higher than expected — sometimes even over 100%. This happens because:
+
+- **Proxmox VE 9 changed memory accounting** to include VM overhead on the host side
+- If the VM doesn't report detailed memory via the ballooning device, Proxmox shows the **host's view** instead of guest-reported usage
+
+**Affected systems:**
+- VMs with ballooning device disabled
+- FreeBSD-based systems (pfSense, OPNsense) — do not report memory details
+- Windows VMs without BalloonService running
+- Any guest that doesn't communicate memory stats back to Proxmox
+
+> See: [Proxmox VE 9.0 Upgrade Notes](https://pve.proxmox.com/wiki/Upgrade_from_8_to_9#VM_Memory_Consumption_Shown_is_Higher)
+
+## The Solution
+
+**proxmox-rmem** fetches *actual* memory usage directly from guest VMs and overrides Proxmox's display:
 
 1. **Patches Proxmox** — Modifies `QemuServer.pm` to read memory overrides from `/tmp/pve-vm-<VMID>-mem-override`
 2. **Monitors VMs** — Background service fetches real memory via SSH or QEMU Guest Agent
