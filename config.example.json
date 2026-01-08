@@ -1,0 +1,12 @@
+[
+    {
+        "vmid": 101,
+        "type": "bsd",
+        "ip": "10.10.10.1"
+    },
+    {
+        "vmid": 202,
+        "type": "linux",
+        "method": "qga"
+    }
+]
