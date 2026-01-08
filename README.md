@@ -17,6 +17,8 @@ After upgrading to Proxmox VE 9, VM memory usage may appear higher than expected
 
 > See: [Proxmox VE 9.0 Upgrade Notes](https://pve.proxmox.com/wiki/Upgrade_from_8_to_9#VM_Memory_Consumption_Shown_is_Higher)
 
+> **Note:** Proxmox's host-side memory view is technically correct for hypervisor capacity planning. This tool provides guest-reported memory usage, which is more useful for application monitoring and avoids misleading high-usage alerts.
+
 ## The Solution
 
 **proxmox-rmem** fetches *actual* memory usage directly from guest VMs and overrides Proxmox's display:
