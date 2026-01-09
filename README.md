@@ -47,6 +47,24 @@ chmod +x install.sh
 ./install.sh
 ```
 
+### Update
+
+Re-run the install script to check for and apply updates:
+
+```bash
+# One-liner update
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/IT-BAER/proxmox-rmem/main/install.sh)"
+
+# Or from cloned repo (pull first)
+git pull && ./install.sh
+```
+
+The script will:
+- ✅ Check for new commits on GitHub
+- ✅ Skip if already up to date (use `--force` to reinstall anyway)
+- ✅ Preserve your config and SSH keys
+- ✅ Update only the service files
+
 ## Configuration
 
 Edit `/etc/proxmox-rmem/config.json`:
