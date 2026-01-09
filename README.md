@@ -55,13 +55,16 @@ Re-run the install script to check for and apply updates:
 # One-liner update
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/IT-BAER/proxmox-rmem/main/install.sh)"
 
+# Force reinstall (even if up to date)
+FORCE_INSTALL=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/IT-BAER/proxmox-rmem/main/install.sh)"
+
 # Or from cloned repo (pull first)
 git pull && ./install.sh
 ```
 
 The script will:
 - ✅ Check for new commits on GitHub
-- ✅ Skip if already up to date (use `--force` to reinstall anyway)
+- ✅ Skip if already up to date
 - ✅ Preserve your config and SSH keys
 - ✅ Update only the service files
 

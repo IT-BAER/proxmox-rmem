@@ -54,6 +54,8 @@ get_installed_commit() {
 
 # Check if this is a reinstall/upgrade
 INSTALLED_COMMIT=$(get_installed_commit)
+FORCE_INSTALL="${FORCE_INSTALL:-}"  # Support FORCE_INSTALL=1 environment variable
+
 if [ -f "$INSTALL_DIR/proxmox-rmem.py" ]; then
     print_status "Existing installation detected"
     
@@ -66,8 +68,10 @@ if [ -f "$INSTALL_DIR/proxmox-rmem.py" ]; then
             print_warning "No version info found - will update to latest ($REMOTE_COMMIT)"
         elif [ "$INSTALLED_COMMIT" = "$REMOTE_COMMIT" ]; then
             print_status "Already up to date (commit: $INSTALLED_COMMIT)"
-            print_info "Re-run with --force to reinstall anyway"
-            if [ "$1" != "--force" ]; then
+            # Check for --force flag or FORCE_INSTALL environment variable
+            if [ "$1" != "--force" ] && [ "$FORCE_INSTALL" != "1" ]; then
+                print_info "To reinstall anyway, use:"
+                echo "  FORCE_INSTALL=1 bash -c \"\$(curl -fsSL $REPO_URL/install.sh)\""
                 echo ""
                 print_status "Nothing to do. Exiting."
                 exit 0
