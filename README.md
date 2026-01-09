@@ -1,6 +1,6 @@
 # proxmox-rmem
 
-**Fix inflated memory usage in Proxmox VE 9 for Linux and BSD VMs.**
+**Fix inflated memory usage in Proxmox VE 9 for Linux, BSD, and Windows VMs.**
 
 ## The Problem
 
@@ -62,6 +62,11 @@ Edit `/etc/proxmox-rmem/config.json`:
     "vmid": 202,
     "type": "linux",
     "method": "qga"
+  },
+  {
+    "vmid": 303,
+    "type": "windows",
+    "method": "qga"
   }
 ]
 ```
@@ -121,11 +126,33 @@ For Windows VMs with QEMU Guest Agent:
 # Check service status
 systemctl status proxmox-rmem
 
-# View logs
+# View logs (live)
 journalctl -u proxmox-rmem -f
 
-# Restart after config changes
-systemctl restart proxmox-rmem
+# View recent logs
+journalctl -u proxmox-rmem --since "10 minutes ago"
+```
+
+> **💡 Hot Reload:** Config changes are applied automatically within 2 seconds — no service restart required!
+
+## Troubleshooting
+
+**VM shows "Failed to fetch memory":**
+- For SSH: Verify IP is reachable, SSH key is authorized, and port is correct
+- For QGA: Ensure QEMU Guest Agent is installed and running in the VM
+- For Windows: Verify the QEMU Guest Agent service is running in Windows Services
+
+**Memory not updating in Proxmox UI:**
+- Check that the patch was applied: `grep "GEMINI PATCH" /usr/share/perl5/PVE/QemuServer.pm`
+- Restart Proxmox services: `systemctl restart pvestatd pvedaemon pveproxy`
+
+**Check override files:**
+```bash
+# List all memory override files
+ls -la /tmp/pve-vm-*-mem-override
+
+# View a specific VM's override value (in bytes)
+cat /tmp/pve-vm-101-mem-override
 ```
 
 ## Uninstall
