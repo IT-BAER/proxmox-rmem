@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 CONFIG_FILE = "/etc/proxmox-rmem/config.json"
 LOG_INTERVAL = 30  # Log successful updates every 30 cycles (~1 minute)
 AUTO_DISCOVER_INTERVAL = 60  # Re-discover VMs every 60 cycles (~2 minutes)
-MAX_CONCURRENT_VMS = 5  # Increased since direct QMP uses much less memory
+DEFAULT_MAX_CONCURRENT = 5  # Default concurrent VM queries (configurable)
 QMP_TIMEOUT = 10  # Timeout for QMP socket operations
 
 # Track last known state for change detection
@@ -466,10 +466,12 @@ def main():
             # Config can be: {"auto": true} or [{"vmid": "*"}] or [{"auto": true}] or mixed
             explicit_vms = []
             auto_mode = False
+            max_concurrent = DEFAULT_MAX_CONCURRENT
             
             if isinstance(config, dict):
                 auto_mode = config.get('auto', False)
                 explicit_vms = config.get('vms', [])
+                max_concurrent = config.get('max_concurrent', DEFAULT_MAX_CONCURRENT)
             elif isinstance(config, list):
                 for vm in config:
                     if vm.get('auto') == True or vm.get('vmid') == '*' or vm.get('vmid') == 'auto':
@@ -519,7 +521,7 @@ def main():
             
             # Use thread pool to limit concurrent QGA/SSH calls (reduces memory spikes)
             if all_vms:
-                with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_VMS) as executor:
+                with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
                     futures = [executor.submit(update_vm, vm) for vm in all_vms]
                     # Wait for all to complete
                     for future in as_completed(futures):

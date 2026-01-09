@@ -144,6 +144,7 @@ For full control, list each VM explicitly:
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `auto` | ❌ | `false` | Enable auto-discovery of VMs with QGA |
+| `max_concurrent` | ❌ | `5` | Max parallel VM queries (higher = faster, more memory) |
 | `vms` | ❌ | `[]` | List of explicit VM configurations (used with `auto`) |
 | `vmid` | ✅* | - | VM ID in Proxmox (* not needed for auto mode) |
 | `type` | ❌ | auto-detected | `linux`, `bsd`, or `windows` |
