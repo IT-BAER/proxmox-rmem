@@ -60,8 +60,7 @@ def main():
         f.write(new_content)
     
     print("Patch applied successfully.")
-    print("Restarting pvestatd...")
-    os.system("systemctl restart pvestatd pvedaemon pveproxy")
+    # Note: Service restart is handled by install.sh to avoid disconnecting web console
 
 if __name__ == "__main__":
     main()

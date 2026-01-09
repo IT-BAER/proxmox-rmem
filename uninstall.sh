@@ -94,11 +94,6 @@ else
     echo "  Config directory not found, skipping."
 fi
 
-# Restart Proxmox services to apply changes
-echo ""
-print_status "Restarting Proxmox services..."
-systemctl restart pvestatd pvedaemon pveproxy
-
 echo ""
 echo "╔══════════════════════════════════════════╗"
 echo "║     Uninstallation Complete!             ║"
@@ -107,3 +102,13 @@ echo ""
 echo "proxmox-rmem has been completely removed."
 echo "Proxmox will now use default memory reporting."
 echo ""
+
+# Restart Proxmox services LAST to apply changes
+# Using --no-block prevents the script from waiting and avoids web console disconnection
+print_status "Restarting Proxmox services..."
+print_warning "If using PVE web console, you may need to refresh the page."
+systemctl restart --no-block pvestatd pvedaemon
+# Delay pveproxy restart slightly to let the script output complete
+( sleep 2 && systemctl restart pveproxy ) &
+
+print_status "Done!"

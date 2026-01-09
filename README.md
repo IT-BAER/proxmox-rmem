@@ -71,7 +71,7 @@ Edit `/etc/proxmox-rmem/config.json`:
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `vmid` | ✅ | - | VM ID in Proxmox |
-| `type` | ❌ | `linux` | `linux` or `bsd` |
+| `type` | ❌ | `linux` | `linux`, `bsd`, or `windows` |
 | `method` | ❌ | `ssh` | `ssh` or `qga` |
 | `ip` | ⚠️ | - | Required for SSH method |
 | `port` | ❌ | `22` | SSH port |
@@ -95,6 +95,25 @@ For QEMU Guest Agent method (ideal for isolated VMs):
 1. Install `qemu-guest-agent` in the VM
 2. Enable "QEMU Guest Agent" in Proxmox VM Options
 3. No network/SSH needed — works via hypervisor channel
+
+### Windows Setup
+
+For Windows VMs with QEMU Guest Agent:
+1. Download and install [virtio-win drivers](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso)
+2. Install the **QEMU Guest Agent** from the virtio-win package (located in `guest-agent` folder)
+3. Ensure the `QEMU Guest Agent` service is running in Windows Services
+4. Enable "QEMU Guest Agent" in Proxmox VM Options
+5. Add the VM to config with `"type": "windows"` and `"method": "qga"`
+
+```json
+{
+  "vmid": 303,
+  "type": "windows",
+  "method": "qga"
+}
+```
+
+> **Note:** Windows VMs only support the QGA method (not SSH) for memory monitoring.
 
 ## Commands
 
@@ -129,6 +148,7 @@ chmod +x uninstall.sh
 |----------|--------|-------------------|
 | Linux | SSH, QGA | `MemTotal - MemAvailable` |
 | FreeBSD / OPNsense | SSH, QGA | `Active + Wired` pages × page size |
+| Windows | QGA | `TotalVisibleMemorySize - FreePhysicalMemory` |
 
 ## License
 

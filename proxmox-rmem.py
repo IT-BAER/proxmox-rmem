@@ -4,11 +4,36 @@ import subprocess
 import threading
 import os
 import sys
+import glob
 
 CONFIG_FILE = "/etc/proxmox-rmem/config.json"
+LOG_INTERVAL = 30  # Log successful updates every 30 cycles (~1 minute)
+
+# Track last known state for change detection
+_vm_status = {}  # vmid -> {'success': bool, 'mem': int}
+_cycle_count = 0
 
 def log(msg):
     print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
+
+def log_vm_status(vmid, success, mem_bytes=None, method=None, os_type=None):
+    """Log only on status changes or periodically."""
+    global _vm_status, _cycle_count
+    
+    prev = _vm_status.get(vmid, {})
+    status_changed = prev.get('success') != success
+    periodic_log = (_cycle_count % LOG_INTERVAL == 0)
+    
+    if success:
+        _vm_status[vmid] = {'success': True, 'mem': mem_bytes}
+        if status_changed:
+            log(f"VM {vmid}: Now receiving memory updates ({mem_bytes / 1024 / 1024:.1f} MB)")
+        elif periodic_log:
+            log(f"VM {vmid}: {mem_bytes / 1024 / 1024:.1f} MB")
+    else:
+        _vm_status[vmid] = {'success': False, 'mem': None}
+        if status_changed:
+            log(f"VM {vmid}: Failed to fetch memory (method={method}, type={os_type})")
 
 def fetch_memory_ssh_bsd(ip, port, key_path):
     cmd = [
@@ -69,6 +94,39 @@ def fetch_memory_qga_bsd(vmid):
     except:
         return None
 
+def fetch_memory_qga_windows(vmid):
+    # Use wmic to get memory stats (works on Windows 7+)
+    cmd = ['qm', 'guest', 'exec', str(vmid), '--', 'wmic', 'OS', 'get', 'TotalVisibleMemorySize,FreePhysicalMemory', '/value']
+    try:
+        output_json = subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
+        result = json.loads(output_json)
+        if result.get('exited') != 1 or result.get('exitcode') != 0:
+            return None
+        return parse_windows_wmic(result.get('out-data', ''))
+    except:
+        return None
+
+def parse_windows_wmic(content):
+    """Parse wmic OS memory output. Values are in KB."""
+    mem_total = 0
+    mem_free = 0
+    for line in content.splitlines():
+        line = line.strip()
+        if line.startswith('TotalVisibleMemorySize='):
+            try:
+                mem_total = int(line.split('=')[1]) * 1024  # KB to bytes
+            except:
+                pass
+        elif line.startswith('FreePhysicalMemory='):
+            try:
+                mem_free = int(line.split('=')[1]) * 1024  # KB to bytes
+            except:
+                pass
+    
+    if mem_total > 0 and mem_free >= 0:
+        return mem_total - mem_free
+    return None
+
 def parse_linux_meminfo(content):
     mem_total = 0
     mem_available = 0
@@ -92,6 +150,8 @@ def update_vm(vm_config):
     if method == 'qga':
         if os_type in ['bsd', 'opnsense', 'freebsd']:
             mem_bytes = fetch_memory_qga_bsd(vmid)
+        elif os_type in ['windows', 'win']:
+            mem_bytes = fetch_memory_qga_windows(vmid)
         else:
             mem_bytes = fetch_memory_qga_linux(vmid)
     else:
@@ -108,32 +168,70 @@ def update_vm(vm_config):
         try:
             with open(override_file, 'w') as f:
                 f.write(str(mem_bytes))
+            log_vm_status(vmid, True, mem_bytes, method, os_type)
         except Exception as e:
-            log(f"Failed to write override for VM {vmid}: {e}")
+            log(f"VM {vmid}: Failed to write override file: {e}")
+            log_vm_status(vmid, False, method=method, os_type=os_type)
+    else:
+        log_vm_status(vmid, False, method=method, os_type=os_type)
+
+def cleanup_stale_overrides(active_vmids):
+    """Remove override files for VMs no longer in config."""
+    for filepath in glob.glob("/tmp/pve-vm-*-mem-override"):
+        try:
+            # Extract VMID from filename: /tmp/pve-vm-101-mem-override
+            parts = os.path.basename(filepath).split("-")
+            vmid = int(parts[2])
+            if vmid not in active_vmids:
+                os.remove(filepath)
+                log(f"Cleaned up stale override for VM {vmid}")
+                # Also remove from status tracking
+                if vmid in _vm_status:
+                    del _vm_status[vmid]
+        except (ValueError, IndexError, OSError):
+            pass
 
 def main():
+    global _cycle_count
+    
     if not os.path.exists(CONFIG_FILE):
         log(f"Config file not found at {CONFIG_FILE}")
         sys.exit(1)
 
     log("Starting proxmox-rmem service (Multi-Method)...")
+    log(f"Config file: {CONFIG_FILE}")
+    log("Config is reloaded every cycle - no restart needed after editing config.json")
     
     while True:
         try:
             with open(CONFIG_FILE, 'r') as f:
                 config = json.load(f)
             
+            # Get active VMIDs for cleanup
+            active_vmids = set()
             threads = []
+            
             for vm in config:
                 if not vm.get('enabled', True):
                     continue
+                vmid = vm.get('vmid')
+                if vmid:
+                    active_vmids.add(vmid)
                 t = threading.Thread(target=update_vm, args=(vm,))
                 t.start()
                 threads.append(t)
             
             for t in threads:
                 t.join()
+            
+            # Cleanup stale override files every 30 cycles (~1 minute)
+            _cycle_count += 1
+            if _cycle_count >= LOG_INTERVAL:
+                cleanup_stale_overrides(active_vmids)
+                _cycle_count = 0
                 
+        except json.JSONDecodeError as e:
+            log(f"Config parse error: {e}")
         except Exception as e:
             log(f"Main loop error: {e}")
         

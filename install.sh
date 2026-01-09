@@ -109,7 +109,7 @@ EOF
 
 systemctl daemon-reload
 systemctl enable proxmox-rmem
-systemctl restart proxmox-rmem
+systemctl start proxmox-rmem
 
 # Cleanup temp files if remote install
 if [ "$LOCAL_INSTALL" = false ]; then
@@ -129,3 +129,13 @@ cat "$SSH_KEY.pub"
 echo ""
 echo "  3. Check status: systemctl status proxmox-rmem"
 echo ""
+
+# Restart Proxmox services LAST to apply the patch
+# Using --no-block prevents the script from waiting and avoids web console disconnection
+print_status "Restarting Proxmox services to apply patch..."
+print_warning "If using PVE web console, you may need to refresh the page."
+systemctl restart --no-block pvestatd pvedaemon
+# Delay pveproxy restart slightly to let the script output complete
+( sleep 2 && systemctl restart pveproxy ) &
+
+print_status "Done! Installation successful."

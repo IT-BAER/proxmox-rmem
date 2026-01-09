@@ -8,5 +8,10 @@
         "vmid": 202,
         "type": "linux",
         "method": "qga"
+    },
+    {
+        "vmid": 303,
+        "type": "windows",
+        "method": "qga"
     }
 ]
