@@ -6,8 +6,10 @@ import shutil
 TARGET_FILE = '/usr/share/perl5/PVE/QemuServer.pm'
 BACKUP_FILE = '/usr/share/perl5/PVE/QemuServer.pm.bak'
 
+# Patch code to be inserted AFTER '$d->{mem} = $d->{memhost};'
+# This location is in the main loop that runs for every VM, not inside a callback
 PATCH_CODE = r'''
-        # proxmox-rmem: Override memory from external file
+        # proxmox-rmem: Override memory from external file if available
         if (-f "/tmp/pve-vm-$vmid-mem-override") {
             if (open(my $fh, '<', "/tmp/pve-vm-$vmid-mem-override")) {
                 my $override_mem = <$fh>;
@@ -36,30 +38,36 @@ def main():
     shutil.copy2(TARGET_FILE, BACKUP_FILE)
     print(f"Backup created at {BACKUP_FILE}")
 
-    # Search for the insertion point
-    # We look for the assignment of ballooninfo
-    search_str = '$d->{ballooninfo} = $info;'
-    idx = content.find(search_str)
+    # Search for the insertion point - AFTER the default memhost assignment
+    # This is in the main vmstatus loop that runs for EVERY VM
+    # The line: $d->{mem} = $d->{memhost}; # default to cgroup PSS sum...
+    search_pattern = r'\$d->\{mem\}\s*=\s*\$d->\{memhost\};[^\n]*'
+    m = re.search(search_pattern, content)
     
-    if idx == -1:
-        # Fallback to regex if exact string match fails due to whitespace
-        m = re.search(r'\$d->\{ballooninfo\}\s*=\s*\$info;', content)
-        if not m:
-            print("Error: Could not find target insertion point in QemuServer.pm")
-            sys.exit(1)
-        idx = m.start()
+    if not m:
+        # Fallback: try finding the ballooninfo assignment (old method)
+        print("Warning: Could not find preferred insertion point, trying fallback...")
+        search_str = '$d->{ballooninfo} = $info;'
+        idx = content.find(search_str)
+        if idx == -1:
+            m2 = re.search(r'\$d->\{ballooninfo\}\s*=\s*\$info;', content)
+            if not m2:
+                print("Error: Could not find any valid insertion point in QemuServer.pm")
+                sys.exit(1)
+            idx = m2.start()
+        line_start = content.rfind('\n', 0, idx) + 1
+        insert_pos = line_start
+    else:
+        # Insert AFTER the memhost assignment line
+        insert_pos = m.end()
     
-    # Find the start of the line (to maintain indentation flow, though we append our own block)
-    # We insert BEFORE the found line.
-    line_start = content.rfind('\n', 0, idx) + 1
-    insert_pos = line_start
-
     new_content = content[:insert_pos] + PATCH_CODE + content[insert_pos:]
 
     with open(TARGET_FILE, 'w') as f:
         f.write(new_content)
     
     print("Patch applied successfully.")
+    print("Location: after '$d->{mem} = $d->{memhost}' in main vmstatus loop")
     # Note: Service restart is handled by install.sh to avoid disconnecting web console
 
 if __name__ == "__main__":
