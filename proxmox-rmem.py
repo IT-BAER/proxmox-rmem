@@ -6,12 +6,14 @@ import os
 import sys
 import glob
 import socket
+import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 CONFIG_FILE = "/etc/proxmox-rmem/config.json"
 LOG_INTERVAL = 30  # Log successful updates every 30 cycles (~1 minute)
 AUTO_DISCOVER_INTERVAL = 60  # Re-discover VMs every 60 cycles (~2 minutes)
-MAX_CONCURRENT_VMS = 3  # Limit parallel QGA/SSH calls to reduce memory spikes
+MAX_CONCURRENT_VMS = 5  # Increased since direct QMP uses much less memory
+QMP_TIMEOUT = 10  # Timeout for QMP socket operations
 
 # Track last known state for change detection
 _vm_status = {}  # vmid -> {'success': bool, 'mem': int}
@@ -32,6 +34,133 @@ def get_local_node():
         return _local_node
     except:
         return "localhost"
+
+# ============================================================================
+# Direct QMP Socket Communication (bypasses Perl, low memory footprint)
+# ============================================================================
+
+class QMPConnection:
+    """Direct connection to QEMU's QMP socket for guest agent commands."""
+    
+    def __init__(self, vmid):
+        self.vmid = vmid
+        self.socket_path = f"/run/qemu-server/{vmid}.qga"
+        self.sock = None
+    
+    def connect(self):
+        """Connect to the QGA socket."""
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(QMP_TIMEOUT)
+        self.sock.connect(self.socket_path)
+    
+    def close(self):
+        """Close the socket connection."""
+        if self.sock:
+            try:
+                self.sock.close()
+            except:
+                pass
+            self.sock = None
+    
+    def send_command(self, execute, arguments=None):
+        """Send a QGA command and return the response."""
+        cmd = {"execute": execute}
+        if arguments:
+            cmd["arguments"] = arguments
+        
+        # Send command
+        msg = json.dumps(cmd) + "\n"
+        self.sock.sendall(msg.encode())
+        
+        # Read response (may come in chunks)
+        response = b""
+        while True:
+            try:
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+                # Check if we have a complete JSON response
+                try:
+                    return json.loads(response.decode())
+                except json.JSONDecodeError:
+                    continue  # Need more data
+            except socket.timeout:
+                break
+        
+        if response:
+            return json.loads(response.decode())
+        return None
+    
+    def guest_exec(self, path, args=None, capture_output=True):
+        """Execute a command in the guest and return the output."""
+        arguments = {
+            "path": path,
+            "capture-output": capture_output
+        }
+        if args:
+            arguments["arg"] = args
+        
+        # Start the command
+        result = self.send_command("guest-exec", arguments)
+        if not result or "return" not in result:
+            return None
+        
+        pid = result["return"].get("pid")
+        if not pid:
+            return None
+        
+        # Poll for completion
+        for _ in range(30):  # Max 30 attempts
+            time.sleep(0.1)
+            status = self.send_command("guest-exec-status", {"pid": pid})
+            if status and "return" in status:
+                ret = status["return"]
+                if ret.get("exited"):
+                    if ret.get("exitcode", 1) == 0:
+                        out_data = ret.get("out-data", "")
+                        if out_data:
+                            # Output is base64 encoded
+                            try:
+                                return base64.b64decode(out_data).decode('utf-8', errors='replace')
+                            except:
+                                return out_data
+                        return ""
+                    return None
+        return None
+    
+    def get_osinfo(self):
+        """Get OS information from the guest agent."""
+        result = self.send_command("guest-get-osinfo")
+        if result and "return" in result:
+            return result["return"]
+        return None
+
+
+def qga_exec(vmid, path, args=None):
+    """Execute a command via QGA using direct socket (low memory)."""
+    try:
+        qmp = QMPConnection(vmid)
+        qmp.connect()
+        try:
+            return qmp.guest_exec(path, args)
+        finally:
+            qmp.close()
+    except Exception:
+        return None
+
+
+def qga_get_osinfo(vmid):
+    """Get OS info via QGA using direct socket."""
+    try:
+        qmp = QMPConnection(vmid)
+        qmp.connect()
+        try:
+            return qmp.get_osinfo()
+        finally:
+            qmp.close()
+    except Exception:
+        return None
 
 def log_vm_status(vmid, success, mem_bytes=None, method=None, os_type=None):
     """Log only on status changes or periodically."""
@@ -84,44 +213,34 @@ def fetch_memory_ssh_linux(ip, port, key_path):
         return None
 
 def fetch_memory_qga_linux(vmid):
-    cmd = ['qm', 'guest', 'exec', str(vmid), '--', 'cat', '/proc/meminfo']
-    try:
-        output_json = subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
-        result = json.loads(output_json)
-        if result.get('exited') != 1 or result.get('exitcode') != 0:
-            return None
-        return parse_linux_meminfo(result.get('out-data', ''))
-    except:
-        return None
+    """Fetch memory from Linux VM using direct QGA socket."""
+    output = qga_exec(vmid, "cat", ["/proc/meminfo"])
+    if output:
+        return parse_linux_meminfo(output)
+    return None
 
 def fetch_memory_qga_bsd(vmid):
-    cmd = ['qm', 'guest', 'exec', str(vmid), '--', 'sysctl', '-n', 'vm.stats.vm.v_active_count', 'vm.stats.vm.v_wire_count', 'vm.stats.vm.v_page_size']
-    try:
-        output_json = subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
-        result = json.loads(output_json)
-        if result.get('exited') != 1 or result.get('exitcode') != 0:
-            return None
-        output = result.get('out-data', '').split()
-        if len(output) != 3:
-            return None
-        active = int(output[0])
-        wired = int(output[1])
-        page_size = int(output[2])
-        return (active + wired) * page_size
-    except:
-        return None
+    """Fetch memory from BSD VM using direct QGA socket."""
+    output = qga_exec(vmid, "sysctl", ["-n", "vm.stats.vm.v_active_count", "vm.stats.vm.v_wire_count", "vm.stats.vm.v_page_size"])
+    if output:
+        parts = output.split()
+        if len(parts) == 3:
+            try:
+                active = int(parts[0])
+                wired = int(parts[1])
+                page_size = int(parts[2])
+                return (active + wired) * page_size
+            except ValueError:
+                pass
+    return None
 
 def fetch_memory_qga_windows(vmid):
-    # Use wmic to get memory stats (works on Windows 7+)
-    cmd = ['qm', 'guest', 'exec', str(vmid), '--', 'wmic', 'OS', 'get', 'TotalVisibleMemorySize,FreePhysicalMemory', '/value']
-    try:
-        output_json = subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
-        result = json.loads(output_json)
-        if result.get('exited') != 1 or result.get('exitcode') != 0:
-            return None
-        return parse_windows_wmic(result.get('out-data', ''))
-    except:
-        return None
+    """Fetch memory from Windows VM using direct QGA socket."""
+    # Use wmic to get memory stats
+    output = qga_exec(vmid, "wmic", ["OS", "get", "TotalVisibleMemorySize,FreePhysicalMemory", "/value"])
+    if output:
+        return parse_windows_wmic(output)
+    return None
 
 def parse_windows_wmic(content):
     """Parse wmic OS memory output. Values are in KB."""
@@ -159,16 +278,12 @@ def parse_linux_meminfo(content):
 
 def detect_os_via_qga(vmid):
     """
-    Detect the OS type of a VM using QGA.
+    Detect the OS type of a VM using QGA (direct socket).
     Returns: 'linux', 'windows', 'bsd', or None if detection fails.
     """
-    # First, try to get OS info via qm guest cmd
-    try:
-        # Try getting OS info first (faster)
-        cmd = ['qm', 'guest', 'cmd', str(vmid), 'get-osinfo']
-        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=5)
-        result = json.loads(output)
-        
+    # First, try to get OS info via direct QGA socket
+    result = qga_get_osinfo(vmid)
+    if result:
         os_name = result.get('name', '').lower()
         kernel = result.get('kernel-release', '').lower()
         os_id = result.get('id', '').lower()
@@ -186,33 +301,21 @@ def detect_os_via_qga(vmid):
         # Default to Linux for other Unix-like systems
         if os_name or os_id:
             return 'linux'
-    except:
-        pass
     
-    # Fallback: Try to detect via file system probes
-    try:
-        # Check for Windows by looking for system drive
-        cmd = ['qm', 'guest', 'exec', str(vmid), '--', 'cmd.exe', '/c', 'ver']
-        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=5)
-        result = json.loads(output)
-        if result.get('exited') == 1 and 'Windows' in result.get('out-data', ''):
-            return 'windows'
-    except:
-        pass
+    # Fallback: Try to detect via command execution
+    # Check for Windows by running cmd.exe
+    output = qga_exec(vmid, "cmd.exe", ["/c", "ver"])
+    if output and 'Windows' in output:
+        return 'windows'
     
-    try:
-        # Check for Linux/BSD by uname
-        cmd = ['qm', 'guest', 'exec', str(vmid), '--', 'uname', '-s']
-        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=5)
-        result = json.loads(output)
-        if result.get('exited') == 1 and result.get('exitcode') == 0:
-            os_name = result.get('out-data', '').strip().lower()
-            if 'bsd' in os_name:
-                return 'bsd'
-            elif 'linux' in os_name:
-                return 'linux'
-    except:
-        pass
+    # Check for Linux/BSD by uname
+    output = qga_exec(vmid, "uname", ["-s"])
+    if output:
+        os_name = output.strip().lower()
+        if 'bsd' in os_name:
+            return 'bsd'
+        elif 'linux' in os_name:
+            return 'linux'
     
     return None
 
