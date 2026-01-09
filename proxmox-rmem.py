@@ -322,37 +322,47 @@ def detect_os_via_qga(vmid):
 def get_running_vms_with_qga():
     """
     Get list of running VMs on this node that have QGA enabled.
+    Uses direct file/socket access instead of pvesh (much faster).
     Returns: list of vmid integers
     """
-    node = get_local_node()
     vm_list = []
     
     try:
-        # Get all VMs on this node
-        cmd = ['pvesh', 'get', f'/nodes/{node}/qemu', '--output-format', 'json']
-        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=10)
-        vms = json.loads(output)
+        # Method 1: Check which VMs have QGA sockets (means they're running with QGA)
+        # This is instant and doesn't require API calls
+        qga_socket_dir = "/run/qemu-server"
+        if os.path.isdir(qga_socket_dir):
+            for entry in os.listdir(qga_socket_dir):
+                if entry.endswith('.qga'):
+                    try:
+                        vmid = int(entry.replace('.qga', ''))
+                        # Verify it's a valid socket (VM is running)
+                        socket_path = os.path.join(qga_socket_dir, entry)
+                        if os.path.exists(socket_path):
+                            vm_list.append(vmid)
+                    except ValueError:
+                        continue
         
-        for vm in vms:
-            vmid = vm.get('vmid')
-            status = vm.get('status', '')
-            
-            # Only process running VMs
-            if status != 'running' or not vmid:
-                continue
-            
-            # Check if QGA is enabled in VM config
-            try:
-                cfg_cmd = ['pvesh', 'get', f'/nodes/{node}/qemu/{vmid}/config', '--output-format', 'json']
-                cfg_output = subprocess.check_output(cfg_cmd, stderr=subprocess.DEVNULL, timeout=5)
-                config = json.loads(cfg_output)
-                
-                # Check for agent setting (agent: 1 or agent: enabled=1,...)
-                agent_setting = str(config.get('agent', '0'))
-                if agent_setting.startswith('1') or 'enabled=1' in agent_setting:
-                    vm_list.append(vmid)
-            except:
-                continue
+        if vm_list:
+            return vm_list
+        
+        # Fallback: Use qm list (faster than pvesh)
+        cmd = ['qm', 'list']
+        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=30).decode()
+        
+        for line in output.splitlines()[1:]:  # Skip header
+            parts = line.split()
+            if len(parts) >= 3:
+                try:
+                    vmid = int(parts[0])
+                    status = parts[2].lower()
+                    if status == 'running':
+                        # Check if QGA socket exists
+                        if os.path.exists(f"/run/qemu-server/{vmid}.qga"):
+                            vm_list.append(vmid)
+                except (ValueError, IndexError):
+                    continue
+                    
     except Exception as e:
         log(f"Auto-discover: Failed to get VM list: {e}")
     
