@@ -33,6 +33,13 @@ echo "║     Fix Proxmox Memory Reporting         ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 
+# Check if this is a reinstall/upgrade
+if [ -f "$INSTALL_DIR/proxmox-rmem.py" ]; then
+    print_status "Existing installation detected - upgrading..."
+    print_warning "Config and SSH keys will be preserved."
+    echo ""
+fi
+
 # Determine if running locally or remotely
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_INSTALL=false
@@ -109,7 +116,7 @@ EOF
 
 systemctl daemon-reload
 systemctl enable proxmox-rmem
-systemctl start proxmox-rmem
+systemctl restart proxmox-rmem
 
 # Cleanup temp files if remote install
 if [ "$LOCAL_INSTALL" = false ]; then
@@ -121,13 +128,22 @@ echo "╔═══════════════════════�
 echo "║     Installation Complete!               ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
+
+# Check if first install or upgrade
+if grep -q "GEMINI PATCH" /usr/share/perl5/PVE/QemuServer.pm 2>/dev/null; then
+    print_status "Proxmox patch verified."
+fi
+
 print_status "Next steps:"
 echo "  1. Edit $CONFIG_DIR/config.json to add your VMs"
-echo "  2. Add the public key to your VMs:"
+echo "  2. For SSH method, add the public key to your VMs:"
 echo ""
 cat "$SSH_KEY.pub"
 echo ""
 echo "  3. Check status: systemctl status proxmox-rmem"
+echo "  4. View logs: journalctl -u proxmox-rmem -f"
+echo ""
+print_status "Config changes are auto-detected - no restart needed!"
 echo ""
 
 # Restart Proxmox services LAST to apply the patch
