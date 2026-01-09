@@ -198,6 +198,16 @@ chmod +x uninstall.sh
 | FreeBSD / OPNsense | SSH, QGA | `Active + Wired` pages × page size |
 | Windows | QGA | `TotalVisibleMemorySize - FreePhysicalMemory` |
 
+## 💜 Support Development
+
+If you find this Project useful, consider supporting this and future Developments, which heavily relies on Coffee:
+
+<div align="center">
+<a href="https://www.buymeacoffee.com/itbaer" target="_blank"><img src="https://github.com/user-attachments/assets/64107f03-ba5b-473e-b8ad-f3696fe06002" alt="Buy Me A Coffee" style="height: 60px !important;max-width: 217px !important;" ></a>
+</div>
+
+<br>
+
 ## License
 
 MIT
