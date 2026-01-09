@@ -126,8 +126,10 @@ fi
 print_status "[2/5] Setting up configuration..."
 mkdir -p "$CONFIG_DIR"
 if [ ! -f "$CONFIG_DIR/config.json" ]; then
-    cp config.example.json "$CONFIG_DIR/config.json"
-    echo "  Created default config at $CONFIG_DIR/config.json"
+    # Create default config with auto-discovery enabled
+    echo '{"auto": true, "vms": []}' > "$CONFIG_DIR/config.json"
+    echo "  Created default config with auto-discovery at $CONFIG_DIR/config.json"
+    echo "  All VMs with QEMU Guest Agent will be monitored automatically!"
 else
     echo "  Config already exists, keeping current."
 fi

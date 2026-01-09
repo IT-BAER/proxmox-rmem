@@ -72,6 +72,53 @@ The script will:
 
 Edit `/etc/proxmox-rmem/config.json`:
 
+### Auto-Discovery Mode (Recommended)
+
+The easiest setup — automatically monitors **all running VMs with QGA enabled**:
+
+```json
+{
+  "auto": true
+}
+```
+
+This will:
+- ✅ Detect all running VMs with QEMU Guest Agent enabled
+- ✅ Automatically determine the OS type (Linux, BSD, Windows)
+- ✅ Apply the correct memory fetching method
+- ✅ Re-scan for new VMs every ~2 minutes
+
+### Auto-Discovery with Overrides
+
+Combine auto-discovery with explicit configuration for special cases:
+
+```json
+{
+  "auto": true,
+  "vms": [
+    {
+      "vmid": 101,
+      "type": "bsd",
+      "ip": "10.10.10.1",
+      "method": "ssh"
+    },
+    {
+      "vmid": 999,
+      "enabled": false
+    }
+  ]
+}
+```
+
+Explicit VM configs **override** auto-discovered settings. Use this to:
+- Use SSH instead of QGA for specific VMs
+- Disable monitoring for certain VMs
+- Force a specific OS type if auto-detection fails
+
+### Manual Mode (Original)
+
+For full control, list each VM explicitly:
+
 ```json
 [
   {
@@ -96,9 +143,11 @@ Edit `/etc/proxmox-rmem/config.json`:
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `vmid` | ✅ | - | VM ID in Proxmox |
-| `type` | ❌ | `linux` | `linux`, `bsd`, or `windows` |
-| `method` | ❌ | `ssh` | `ssh` or `qga` |
+| `auto` | ❌ | `false` | Enable auto-discovery of VMs with QGA |
+| `vms` | ❌ | `[]` | List of explicit VM configurations (used with `auto`) |
+| `vmid` | ✅* | - | VM ID in Proxmox (* not needed for auto mode) |
+| `type` | ❌ | auto-detected | `linux`, `bsd`, or `windows` |
+| `method` | ❌ | `qga` (auto) / `ssh` (manual) | `ssh` or `qga` |
 | `ip` | ⚠️ | - | Required for SSH method |
 | `port` | ❌ | `22` | SSH port |
 | `ssh_key` | ❌ | `/etc/proxmox-rmem/id_rsa_monitor` | SSH private key path |
