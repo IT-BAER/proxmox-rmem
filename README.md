@@ -164,7 +164,7 @@ journalctl -u proxmox-rmem --since "10 minutes ago"
 - For Windows: Verify the QEMU Guest Agent service is running in Windows Services
 
 **Memory not updating in Proxmox UI:**
-- Check that the patch was applied: `grep "GEMINI PATCH" /usr/share/perl5/PVE/QemuServer.pm`
+- Check that the patch was applied: `grep "proxmox-rmem" /usr/share/perl5/PVE/QemuServer.pm`
 - Restart Proxmox services: `systemctl restart pvestatd pvedaemon pveproxy`
 
 **Check override files:**

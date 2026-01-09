@@ -192,7 +192,7 @@ if [ -n "$REMOTE_COMMIT" ]; then
 fi
 
 # Check if first install or upgrade
-if grep -q "GEMINI PATCH" /usr/share/perl5/PVE/QemuServer.pm 2>/dev/null; then
+if grep -q "proxmox-rmem" /usr/share/perl5/PVE/QemuServer.pm 2>/dev/null; then
     print_status "Proxmox patch verified."
 fi
 

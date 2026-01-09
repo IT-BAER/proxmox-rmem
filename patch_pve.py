@@ -7,7 +7,7 @@ TARGET_FILE = '/usr/share/perl5/PVE/QemuServer.pm'
 BACKUP_FILE = '/usr/share/perl5/PVE/QemuServer.pm.bak'
 
 PATCH_CODE = r'''
-        # GEMINI PATCH: Override memory from external file
+        # proxmox-rmem: Override memory from external file
         if (-f "/tmp/pve-vm-$vmid-mem-override") {
             if (open(my $fh, '<', "/tmp/pve-vm-$vmid-mem-override")) {
                 my $override_mem = <$fh>;
@@ -28,7 +28,7 @@ def main():
     with open(TARGET_FILE, 'r') as f:
         content = f.read()
 
-    if 'GEMINI PATCH' in content:
+    if 'proxmox-rmem' in content:
         print("Already patched.")
         sys.exit(0)
 
