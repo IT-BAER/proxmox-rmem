@@ -32,14 +32,14 @@ After upgrading to Proxmox VE 9, VM memory usage may appear higher than expected
 > **One-liner installation** (run on Proxmox host):
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/IT-BAER/proxmox-rmem/main/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/lucarab/proxmox-rmem/main/install.sh)"
 ```
 
 ### Manual Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/IT-BAER/proxmox-rmem.git
+git clone https://github.com/lucarab/proxmox-rmem.git
 cd proxmox-rmem
 
 # Run installer
@@ -53,10 +53,10 @@ Re-run the install script to check for and apply updates:
 
 ```bash
 # One-liner update
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/IT-BAER/proxmox-rmem/main/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/lucarab/proxmox-rmem/main/install.sh)"
 
 # Force reinstall (even if up to date)
-FORCE_INSTALL=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/IT-BAER/proxmox-rmem/main/install.sh)"
+FORCE_INSTALL=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/lucarab/proxmox-rmem/main/install.sh)"
 
 # Or from cloned repo (pull first)
 git pull && ./install.sh
@@ -100,7 +100,8 @@ Combine auto-discovery with explicit configuration for special cases:
       "vmid": 101,
       "type": "bsd",
       "ip": "10.10.10.1",
-      "method": "ssh"
+      "method": "ssh",
+      "user": "admin"
     },
     {
       "vmid": 999,
@@ -151,6 +152,7 @@ For full control, list each VM explicitly:
 | `method` | ❌ | `qga` (auto) / `ssh` (manual) | `ssh` or `qga` |
 | `ip` | ⚠️ | - | Required for SSH method |
 | `port` | ❌ | `22` | SSH port |
+| `user` | ❌ | `root` | SSH username to connect with (useful if root is disabled) |
 | `ssh_key` | ❌ | `/etc/proxmox-rmem/id_rsa_monitor` | SSH private key path |
 | `enabled` | ❌ | `true` | Enable/disable this VM |
 
@@ -231,7 +233,7 @@ cat /tmp/pve-vm-101-mem-override
 Completely removes all components and restores original Proxmox behavior:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/IT-BAER/proxmox-rmem/main/uninstall.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/lucarab/proxmox-rmem/main/uninstall.sh)"
 ```
 
 Or if installed locally:

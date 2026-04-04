@@ -6,8 +6,8 @@
 
 set -e
 
-REPO_URL="https://raw.githubusercontent.com/IT-BAER/proxmox-rmem/main"
-REPO_API="https://api.github.com/repos/IT-BAER/proxmox-rmem/commits/main"
+REPO_URL="https://raw.githubusercontent.com/lucarab/proxmox-rmem/main"
+REPO_API="https://api.github.com/repos/lucarab/proxmox-rmem/commits/main"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/proxmox-rmem"
 SERVICE_FILE="/etc/systemd/system/proxmox-rmem.service"
